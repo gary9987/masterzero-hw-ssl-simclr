@@ -7,9 +7,10 @@ import torch
 from tqdm import tqdm
 import numpy as np
 from simclr.modules.resnet_hacks import modify_resnet_model
+import torch.utils.data as data
+
 
 def train(loader, device, model, criterion, optimizer):
-
     loss_epoch = 0
     accuracy_epoch = 0
     model.train()
@@ -34,8 +35,8 @@ def train(loader, device, model, criterion, optimizer):
 
     return loss_epoch, accuracy_epoch
 
-def test(loader, device, model, criterion):
 
+def test(loader, device, model, criterion):
     loss_epoch = 0
     accuracy_epoch = 0
     model.eval()
@@ -57,8 +58,8 @@ def test(loader, device, model, criterion):
 
     return loss_epoch, accuracy_epoch
 
-def inference(loader, simclr_model, device):
 
+def inference(loader, simclr_model, device):
     feature_vector = []
     labels_vector = []
 
@@ -80,20 +81,26 @@ def inference(loader, simclr_model, device):
     return feature_vector, labels_vector
 
 
-def get_features(context_model, train_loader, test_loader, device):
-
+def get_features(context_model, train_loader, valid_loader, test_loader, device):
     train_X, train_y = inference(train_loader, context_model, device)
+    valid_X, valid_y = inference(valid_loader, context_model, device)
     test_X, test_y = inference(test_loader, context_model, device)
-    return train_X, train_y, test_X, test_y
+    return train_X, train_y, valid_X, valid_y, test_X, test_y
 
 
-def create_data_loaders_from_arrays(X_train, y_train, X_test, y_test, batch_size):
-
+def create_data_loaders_from_arrays(X_train, y_train, X_valid, y_valid, X_test, y_test, batch_size):
     train = torch.utils.data.TensorDataset(
         torch.from_numpy(X_train), torch.from_numpy(y_train)
     )
     train_loader = torch.utils.data.DataLoader(
         train, batch_size=batch_size, shuffle=False
+    )
+
+    valid = torch.utils.data.TensorDataset(
+        torch.from_numpy(X_valid), torch.from_numpy(y_valid)
+    )
+    valid_loader = torch.utils.data.DataLoader(
+        valid, batch_size=batch_size, shuffle=False
     )
 
     test = torch.utils.data.TensorDataset(
@@ -102,7 +109,8 @@ def create_data_loaders_from_arrays(X_train, y_train, X_test, y_test, batch_size
     test_loader = torch.utils.data.DataLoader(
         test, batch_size=batch_size, shuffle=False
     )
-    return train_loader, test_loader
+    return train_loader, valid_loader, test_loader
+
 
 if __name__ == '__main__':
 
@@ -114,6 +122,12 @@ if __name__ == '__main__':
         download=True,
         transform=TransformsSimCLR(size=32).test_transform
     )
+
+    # Random split training dataset to training set and validation set
+    train_set_size = int(len(train_dataset) * 0.8)
+    valid_set_size = len(train_dataset) - train_set_size
+    train_dataset, valid_dataset = data.random_split(train_dataset, [train_set_size, valid_set_size])
+
     test_dataset = torchvision.datasets.CIFAR10(
         './data',
         train=False,
@@ -127,6 +141,14 @@ if __name__ == '__main__':
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
+        drop_last=True,
+        num_workers=2,
+    )
+
+    valid_loader = torch.utils.data.DataLoader(
+        valid_dataset,
+        batch_size=batch_size,
+        shuffle=False,
         drop_last=True,
         num_workers=2,
     )
@@ -158,33 +180,39 @@ if __name__ == '__main__':
     criterion = torch.nn.CrossEntropyLoss()
 
     print("### Creating features from pre-trained context model ###")
-    (train_X, train_y, test_X, test_y) = get_features(
-        simclr_model, train_loader, test_loader, device
+    (train_X, train_y, valid_X, valid_y, test_X, test_y) = get_features(
+        simclr_model, train_loader, valid_loader, test_loader, device
     )
 
-
-    arr_train_loader, arr_test_loader = create_data_loaders_from_arrays(
-        train_X, train_y, test_X, test_y, batch_size
+    arr_train_loader, arr_valid_loader, arr_test_loader = create_data_loaders_from_arrays(
+        train_X, train_y, valid_X, valid_y, test_X, test_y, batch_size
     )
 
     n_epochs = 500
     glob_loss = np.Inf
-    for epoch in range(1, n_epochs+1):
-        loss_epoch, accuracy_epoch = train(arr_train_loader, device, model, criterion, optimizer)
-        loss = loss_epoch / len(train_loader)
-        print(f"Epoch [{epoch}/{n_epochs}]\t Loss: {loss_epoch / len(train_loader)}\t Accuracy: {accuracy_epoch / len(train_loader)}")
+    for epoch in range(1, n_epochs + 1):
+        # Train
+        train_loss_epoch, train_accuracy_epoch = train(arr_train_loader, device, model, criterion, optimizer)
+        train_loss = train_loss_epoch / len(train_loader)
+        # Valid
+        valid_loss_epoch, valid_accuracy_epoch = test(arr_valid_loader, device, model, criterion)
+        valid_loss = valid_loss_epoch / len(valid_loader)
 
-        if loss < glob_loss:
-            print('Training loss decreased ({:.6f} --> {:.6f}).  Saving checkpoint ...'.format(glob_loss, loss))
-            glob_loss = loss
+        print(
+            f"Epoch [{epoch}/{n_epochs}]\t Train_Loss: {train_loss_epoch / len(train_loader)}\t Train_Accuracy: {train_accuracy_epoch / len(train_loader)}"
+            f"\tValid_Loss: {valid_loss_epoch / len(valid_loader)}\t Valid_Accuracy: {valid_accuracy_epoch / len(valid_loader)}")
+
+        if valid_loss < glob_loss:
+            print('Valid loss decreased ({:.6f} --> {:.6f}).  Saving checkpoint ...'.format(glob_loss, valid_loss))
+            glob_loss = valid_loss
             torch.save(model.state_dict(), 'classifier.pth')
 
     model.load_state_dict(torch.load('classifier.pth'))
 
     # final testing
-    loss_epoch, accuracy_epoch = test(
+    test_loss_epoch, test_accuracy_epoch = test(
         arr_test_loader, device, model, criterion
     )
     print(
-        f"[FINAL]\t Loss: {loss_epoch / len(test_loader)}\t Accuracy: {accuracy_epoch / len(test_loader)}"
+        f"[FINAL]\t Loss: {test_loss_epoch / len(test_loader)}\t Accuracy: {test_accuracy_epoch / len(test_loader)}"
     )
