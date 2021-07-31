@@ -5,11 +5,11 @@
 searchSpaceFile: search_space.json
 trialCommand: python linearEvaluation.py  # NOTE: change "python3" to "python" if you are using Windows
 trialGpuNumber: 1
-trialConcurrency: 2
+trialConcurrency: 1
 tuner:
   name: TPE
   classArgs:
-    optimize_mode: minimize
+    optimize_mode: maximize
 trainingService:
   platform: local
   use_active_gpu: True

@@ -143,7 +143,7 @@ def main(args):
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
-        num_workers=4,
+        num_workers=2,
     )
 
     valid_loader = torch.utils.data.DataLoader(
@@ -151,7 +151,7 @@ def main(args):
         batch_size=batch_size,
         shuffle=False,
         drop_last=True,
-        num_workers=4,
+        num_workers=2,
     )
 
     test_loader = torch.utils.data.DataLoader(
