@@ -126,7 +126,7 @@ if __name__ == '__main__':
     # Random split training dataset to training set and validation set
     train_set_size = int(len(train_dataset) * 0.8)
     valid_set_size = len(train_dataset) - train_set_size
-    train_dataset, valid_dataset = data.random_split(train_dataset, [train_set_size, valid_set_size])
+    train_dataset, valid_dataset = data.random_split(train_dataset, [train_set_size, valid_set_size], generator=torch.Generator().manual_seed(42))
 
     test_dataset = torchvision.datasets.CIFAR10(
         './data',
@@ -188,7 +188,7 @@ if __name__ == '__main__':
         train_X, train_y, valid_X, valid_y, test_X, test_y, batch_size
     )
 
-    n_epochs = 500
+    n_epochs = 200
     glob_loss = np.Inf
     for epoch in range(1, n_epochs + 1):
         # Train
