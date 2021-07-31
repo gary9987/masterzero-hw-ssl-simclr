@@ -121,7 +121,7 @@ if __name__ == '__main__':
         transform=TransformsSimCLR(size=32).test_transform
     )
 
-    batch_size = 256
+    batch_size = 512
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -144,7 +144,7 @@ if __name__ == '__main__':
 
     # load pre-trained model from checkpoint
     simclr_model = SimCLR(encoder, hidden_dim=512, projection_dim=128, n_features=n_features)
-    model_fp = 'checkpoint1.pth'
+    model_fp = 't0.5checkpoint1.pth'
     simclr_model.load_state_dict(torch.load(model_fp, map_location='cuda:0'))
     simclr_model = simclr_model.to(device)
     simclr_model.eval()
@@ -154,7 +154,7 @@ if __name__ == '__main__':
     model = LogisticRegression(simclr_model.n_features, n_classes)
     model = model.to(device)
 
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
     criterion = torch.nn.CrossEntropyLoss()
 
     print("### Creating features from pre-trained context model ###")
@@ -167,7 +167,7 @@ if __name__ == '__main__':
         train_X, train_y, test_X, test_y, batch_size
     )
 
-    n_epochs = 1000
+    n_epochs = 500
     glob_loss = np.Inf
     for epoch in range(1, n_epochs+1):
         loss_epoch, accuracy_epoch = train(arr_train_loader, device, model, criterion, optimizer)
