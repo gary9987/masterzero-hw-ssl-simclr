@@ -9,6 +9,7 @@ import numpy as np
 from simclr.modules.resnet_hacks import modify_resnet_model
 import torch.utils.data as data
 
+import nni
 
 def train(loader, device, model, criterion, optimizer):
     loss_epoch = 0
@@ -112,7 +113,7 @@ def create_data_loaders_from_arrays(X_train, y_train, X_valid, y_valid, X_test, 
     return train_loader, valid_loader, test_loader
 
 
-if __name__ == '__main__':
+def main(args):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -135,7 +136,7 @@ if __name__ == '__main__':
         transform=TransformsSimCLR(size=32).test_transform
     )
 
-    batch_size = 512
+    batch_size = args['batch_size']
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -176,7 +177,7 @@ if __name__ == '__main__':
     model = LogisticRegression(simclr_model.n_features, n_classes)
     model = model.to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
     criterion = torch.nn.CrossEntropyLoss()
 
     print("### Creating features from pre-trained context model ###")
@@ -193,11 +194,12 @@ if __name__ == '__main__':
     for epoch in range(1, n_epochs + 1):
         # Train
         train_loss_epoch, train_accuracy_epoch = train(arr_train_loader, device, model, criterion, optimizer)
-        train_loss = train_loss_epoch / len(train_loader)
+
         # Valid
         valid_loss_epoch, valid_accuracy_epoch = test(arr_valid_loader, device, model, criterion)
         valid_loss = valid_loss_epoch / len(valid_loader)
 
+        nni.report_intermediate_result(valid_accuracy_epoch / len(valid_loader))
         print(
             f"Epoch [{epoch}/{n_epochs}]\t Train_Loss: {train_loss_epoch / len(train_loader)}\t Train_Accuracy: {train_accuracy_epoch / len(train_loader)}"
             f"\tValid_Loss: {valid_loss_epoch / len(valid_loader)}\t Valid_Accuracy: {valid_accuracy_epoch / len(valid_loader)}")
@@ -213,6 +215,20 @@ if __name__ == '__main__':
     test_loss_epoch, test_accuracy_epoch = test(
         arr_test_loader, device, model, criterion
     )
+    nni.report_final_result(test_accuracy_epoch / len(test_loader))
     print(
         f"[FINAL]\t Loss: {test_loss_epoch / len(test_loader)}\t Accuracy: {test_accuracy_epoch / len(test_loader)}"
     )
+
+
+if __name__ == '__main__':
+    try:
+        # get parameters form tuner
+        tuner_params = nni.get_next_parameter()
+        if(len(tuner_params) == 0):
+            tuner_params = {"batch_size": 512, "lr": 0.001, "training_size": 0.8, "weight_decay": 1e-6}
+
+        main(tuner_params)
+
+    except Exception as exception:
+        raise
