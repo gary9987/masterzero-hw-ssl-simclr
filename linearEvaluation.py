@@ -125,7 +125,7 @@ def main(args):
     )
 
     # Random split training dataset to training set and validation set
-    train_set_size = int(len(train_dataset) * 0.8)
+    train_set_size = int(len(train_dataset) * args['training_size'])
     valid_set_size = len(train_dataset) - train_set_size
     train_dataset, valid_dataset = data.random_split(train_dataset, [train_set_size, valid_set_size], generator=torch.Generator().manual_seed(42))
 
@@ -143,7 +143,7 @@ def main(args):
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
-        num_workers=2,
+        num_workers=4,
     )
 
     valid_loader = torch.utils.data.DataLoader(
@@ -151,7 +151,7 @@ def main(args):
         batch_size=batch_size,
         shuffle=False,
         drop_last=True,
-        num_workers=2,
+        num_workers=4,
     )
 
     test_loader = torch.utils.data.DataLoader(
@@ -189,7 +189,7 @@ def main(args):
         train_X, train_y, valid_X, valid_y, test_X, test_y, batch_size
     )
 
-    n_epochs = 200
+    n_epochs = 130
     glob_loss = np.Inf
     for epoch in range(1, n_epochs + 1):
         # Train
