@@ -167,7 +167,7 @@ def main(args):
 
     # load pre-trained model from checkpoint
     simclr_model = SimCLR(encoder, hidden_dim=512, projection_dim=128, n_features=n_features)
-    model_fp = 'checkpoint1.pth'
+    model_fp = 'checkpoint2.pth'
     simclr_model.load_state_dict(torch.load(model_fp, map_location='cuda:0'))
     simclr_model = simclr_model.to(device)
     simclr_model.eval()
@@ -189,7 +189,7 @@ def main(args):
         train_X, train_y, valid_X, valid_y, test_X, test_y, batch_size
     )
 
-    n_epochs = 130
+    n_epochs = 150
     glob_loss = np.Inf
     for epoch in range(1, n_epochs + 1):
         # Train
