@@ -1,7 +1,7 @@
 from torch.optim.lr_scheduler import LambdaLR
-
 from simclrModel import SimCLR
-from simclr.modules import LogisticRegression
+# from simclr.modules import LogisticRegression
+from linear import LogisticRegression
 from torch.utils.data import DataLoader
 import torchvision
 from simclr.modules.transformations import TransformsSimCLR
@@ -10,12 +10,15 @@ from tqdm import tqdm
 import numpy as np
 from simclr.modules.resnet_hacks import modify_resnet_model
 import torch.utils.data as data
+from torch.utils.data import ConcatDataset
 
 import nni
+
 
 def get_lr(step, total_steps, lr_max, lr_min):
     """Compute learning rate according to cosine annealing schedule."""
     return lr_min + (lr_max - lr_min) * 0.5 * (1 + np.cos(step / total_steps * np.pi))
+
 
 def train(loader, device, model, criterion, optimizer, scheduler):
     loss_epoch = 0
@@ -121,7 +124,6 @@ def create_data_loaders_from_arrays(X_train, y_train, X_valid, y_valid, X_test, 
 
 
 def main(args):
-
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     train_dataset = torchvision.datasets.CIFAR10(
@@ -134,7 +136,10 @@ def main(args):
     # Random split training dataset to training set and validation set
     train_set_size = int(len(train_dataset) * args['training_size'])
     valid_set_size = len(train_dataset) - train_set_size
-    train_dataset, valid_dataset = data.random_split(train_dataset, [train_set_size, valid_set_size], generator=torch.Generator().manual_seed(42))
+    train_dataset, valid_dataset = data.random_split(train_dataset, [train_set_size, valid_set_size],
+                                                     generator=torch.Generator().manual_seed(0))
+
+    train_dataset = ConcatDataset([train_dataset, train_dataset])
 
     test_dataset = torchvision.datasets.CIFAR10(
         './data',
@@ -149,7 +154,7 @@ def main(args):
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        drop_last=True,
+        drop_last=False,
         num_workers=2,
     )
 
@@ -157,7 +162,7 @@ def main(args):
         valid_dataset,
         batch_size=batch_size,
         shuffle=False,
-        drop_last=True,
+        drop_last=False,
         num_workers=2,
     )
 
@@ -165,16 +170,17 @@ def main(args):
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
-        drop_last=True,
+        drop_last=False,
         num_workers=2,
     )
 
     encoder = modify_resnet_model(torchvision.models.resnet18())
+    # encoder = torchvision.models.resnet18()
     n_features = encoder.fc.in_features  # get dimensions of fc layer
 
     # load pre-trained model from checkpoint
     simclr_model = SimCLR(encoder, hidden_dim=512, projection_dim=128, n_features=n_features)
-    model_fp = 'checkpoint2.pth'
+    model_fp = 'checkpointv6.pth'
     simclr_model.load_state_dict(torch.load(model_fp, map_location='cuda:0'))
     simclr_model = simclr_model.to(device)
     simclr_model.eval()
@@ -184,12 +190,13 @@ def main(args):
     model = LogisticRegression(simclr_model.n_features, n_classes)
     model = model.to(device)
 
-    #optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
     criterion = torch.nn.CrossEntropyLoss()
 
     optimizer = torch.optim.SGD(
         model.parameters(),
         args['lr'],  # lr = 0.1 * batch_size / 256, see section B.6 and B.7 of SimCLR paper.
+        momentum=0.9,
         weight_decay=0.)
 
     n_epochs = 150
@@ -201,7 +208,7 @@ def main(args):
             step,
             n_epochs * len(train_loader),
             args['lr'],  # lr_lambda computes multiplicative factor
-            1e-3))
+            1e-5))
 
     print("### Creating features from pre-trained context model ###")
     (train_X, train_y, valid_X, valid_y, test_X, test_y) = get_features(
@@ -211,7 +218,6 @@ def main(args):
     arr_train_loader, arr_valid_loader, arr_test_loader = create_data_loaders_from_arrays(
         train_X, train_y, valid_X, valid_y, test_X, test_y, batch_size
     )
-
 
     glob_loss = np.Inf
     for epoch in range(1, n_epochs + 1):
@@ -248,8 +254,8 @@ if __name__ == '__main__':
     try:
         # get parameters form tuner
         tuner_params = nni.get_next_parameter()
-        if(len(tuner_params) == 0):
-            tuner_params = {"batch_size": 512, "lr": 0.2, "training_size": 0.8}
+        if (len(tuner_params) == 0):
+            tuner_params = {"batch_size": 512, "lr": 0.2, "training_size": 0.85}
 
         main(tuner_params)
 
