@@ -1,3 +1,5 @@
+from torch.optim.lr_scheduler import LambdaLR
+
 from simclrModel import SimCLR
 from simclr.modules import LogisticRegression
 from torch.utils.data import DataLoader
@@ -11,7 +13,11 @@ import torch.utils.data as data
 
 import nni
 
-def train(loader, device, model, criterion, optimizer):
+def get_lr(step, total_steps, lr_max, lr_min):
+    """Compute learning rate according to cosine annealing schedule."""
+    return lr_min + (lr_max - lr_min) * 0.5 * (1 + np.cos(step / total_steps * np.pi))
+
+def train(loader, device, model, criterion, optimizer, scheduler):
     loss_epoch = 0
     accuracy_epoch = 0
     model.train()
@@ -31,6 +37,7 @@ def train(loader, device, model, criterion, optimizer):
 
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         loss_epoch += loss.item()
 
@@ -177,8 +184,24 @@ def main(args):
     model = LogisticRegression(simclr_model.n_features, n_classes)
     model = model.to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
+    #optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
     criterion = torch.nn.CrossEntropyLoss()
+
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        args['lr'],  # lr = 0.1 * batch_size / 256, see section B.6 and B.7 of SimCLR paper.
+        weight_decay=0.)
+
+    n_epochs = 150
+
+    # cosine annealing lr
+    scheduler = LambdaLR(
+        optimizer,
+        lr_lambda=lambda step: get_lr(  # pylint: disable=g-long-lambda
+            step,
+            n_epochs * len(train_loader),
+            args['lr'],  # lr_lambda computes multiplicative factor
+            1e-3))
 
     print("### Creating features from pre-trained context model ###")
     (train_X, train_y, valid_X, valid_y, test_X, test_y) = get_features(
@@ -189,11 +212,11 @@ def main(args):
         train_X, train_y, valid_X, valid_y, test_X, test_y, batch_size
     )
 
-    n_epochs = 150
+
     glob_loss = np.Inf
     for epoch in range(1, n_epochs + 1):
         # Train
-        train_loss_epoch, train_accuracy_epoch = train(arr_train_loader, device, model, criterion, optimizer)
+        train_loss_epoch, train_accuracy_epoch = train(arr_train_loader, device, model, criterion, optimizer, scheduler)
 
         # Valid
         valid_loss_epoch, valid_accuracy_epoch = test(arr_valid_loader, device, model, criterion)
@@ -226,7 +249,7 @@ if __name__ == '__main__':
         # get parameters form tuner
         tuner_params = nni.get_next_parameter()
         if(len(tuner_params) == 0):
-            tuner_params = {"batch_size": 512, "lr": 0.001, "training_size": 0.8, "weight_decay": 1e-6}
+            tuner_params = {"batch_size": 512, "lr": 0.2, "training_size": 0.8}
 
         main(tuner_params)
 
