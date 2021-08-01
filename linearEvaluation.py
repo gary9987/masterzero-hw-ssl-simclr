@@ -167,7 +167,7 @@ def main(args):
 
     # load pre-trained model from checkpoint
     simclr_model = SimCLR(encoder, hidden_dim=512, projection_dim=128, n_features=n_features)
-    model_fp = 't0.5checkpoint1.pth'
+    model_fp = 'checkpoint1.pth'
     simclr_model.load_state_dict(torch.load(model_fp, map_location='cuda:0'))
     simclr_model = simclr_model.to(device)
     simclr_model.eval()
