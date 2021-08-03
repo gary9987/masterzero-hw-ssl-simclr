@@ -47,7 +47,7 @@ if __name__ == '__main__':
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
-        num_workers=8,
+        num_workers=4,
         sampler=None,
         pin_memory=True
     )
