@@ -1,6 +1,5 @@
 from torch.optim.lr_scheduler import LambdaLR
 from simclrModel import SimCLR
-# from simclr.modules import LogisticRegression
 from linear import LogisticRegression
 from torch.utils.data import DataLoader
 import torchvision
@@ -139,7 +138,7 @@ def main(args):
     train_dataset, valid_dataset = data.random_split(train_dataset, [train_set_size, valid_set_size],
                                                      generator=torch.Generator().manual_seed(0))
 
-    train_dataset = ConcatDataset([train_dataset, train_dataset])
+    #train_dataset = ConcatDataset([train_dataset, train_dataset])
 
     test_dataset = torchvision.datasets.CIFAR10(
         './data',
@@ -180,14 +179,14 @@ def main(args):
 
     # load pre-trained model from checkpoint
     simclr_model = SimCLR(encoder, hidden_dim=512, projection_dim=128, n_features=n_features)
-    model_fp = 'checkpointv6.pth'
+    model_fp = 'checkpoint1.pth'
     simclr_model.load_state_dict(torch.load(model_fp, map_location='cuda:0'))
     simclr_model = simclr_model.to(device)
     simclr_model.eval()
 
     ## Logistic Regression (classifier)
     n_classes = 10  # stl-10 / cifar-10
-    model = LogisticRegression(simclr_model.n_features, n_classes)
+    model = LogisticRegression(simclr_model.n_features, args['hidden_layer'], n_classes)
     model = model.to(device)
 
     # optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
@@ -255,7 +254,7 @@ if __name__ == '__main__':
         # get parameters form tuner
         tuner_params = nni.get_next_parameter()
         if (len(tuner_params) == 0):
-            tuner_params = {"batch_size": 512, "lr": 0.2, "training_size": 0.85}
+            tuner_params = {"batch_size": 512, "lr": 0.2, "training_size": 0.9, "hidden_layer": 20480}
 
         main(tuner_params)
 
